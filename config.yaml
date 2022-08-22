@@ -1,0 +1,40 @@
+api_key: API_KEY_HERE
+admin_id: 42
+mqtt:
+    url: wss://HOST:PORT
+    username: USERNAME
+    password: PASSWORD
+authorized_users: []
+registration:
+    - name: kitchen
+      topic: livingroom/light_kitchen
+      values:
+        - "on"
+        - "off"
+    - name: bathroom
+      topic: bathroom/force_light
+      values:
+        - none
+        - big
+        - small
+        - "off"
+    - name: pc
+      topic: livingroom/light_pc
+      values:
+        - "on"
+        - "off"
+    - name: workbench
+      topic: livingroom/light_bench
+      values:
+        - "on"
+        - "off"
+    - name: box
+      topic: livingroom/light_box
+      values:
+        - "on"
+        - "off"
+    - name: amp
+      topic: livingroom/light_amp
+      values:
+        - "on"
+        - "off"

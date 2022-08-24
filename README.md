@@ -41,6 +41,10 @@ Modify the username and paths in `lights-telegram.service` and the commands belo
     systemctl daemon-reload
     systemctl enable --now lights-telegram
 
+You can also look at the log output of the app.
+
+    journalctl -u lights-telegram -b -f
+
 ## Dependencies
 
  * [tgbotapi](https://pkg.go.dev/github.com/go-telegram-bot-api/telegram-bot-api/v5)

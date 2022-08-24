@@ -25,6 +25,7 @@ type Registration struct {
     Name string `yaml:"name"`
     Topic string `yaml:"topic"`
     Values []string `yaml:"values"`
+    lastValue string
 }
 
 type Config struct {
@@ -155,7 +156,7 @@ func sendMessage(text string, user int64) {
     }
 }
 
-func sendKeyboardReply(name string, chat int64, message int) {
+func sendKeyboardReply(text string, name string, chat int64, message int) {
     var rows [][]tgbotapi.KeyboardButton
     for reg := range config.Registration {
         if name == config.Registration[reg].Name {
@@ -168,7 +169,7 @@ func sendKeyboardReply(name string, chat int64, message int) {
     }
     keyboard := tgbotapi.NewOneTimeReplyKeyboard(rows...)
 
-    msg := tgbotapi.NewMessage(chat, "Select option below...")
+    msg := tgbotapi.NewMessage(chat, text)
     msg.ReplyToMessageID = message
     msg.ReplyMarkup = keyboard
     _, err := bot.Send(msg)
@@ -231,6 +232,13 @@ func register(name string, topic string, values string) error {
 
     config.Registration = append(config.Registration, r)
     writeConfig()
+
+
+    token := mqttClient.Subscribe(topic, 0, onMessageReceived)
+    if token.Wait() && token.Error() != nil {
+        log.Printf("MQTT sub error: %v", token.Error())
+    }
+
     return nil
 }
 
@@ -242,8 +250,14 @@ func remove(s []Registration, i int) []Registration {
 func unregister(name string) error {
     for reg := range config.Registration {
         if name == config.Registration[reg].Name {
+            token := mqttClient.Unsubscribe(config.Registration[reg].Topic)
+            if token.Wait() && token.Error() != nil {
+                log.Println("MQTT unsub error: %v", token.Error())
+            }
+
             config.Registration = remove(config.Registration, reg)
             writeConfig()
+
             return nil
         }
     }
@@ -282,6 +296,34 @@ func topicForName(name string) string {
     return "unknown"
 }
 
+func lastValueForCommand(name string) string {
+    ret := ""
+
+    for reg := range config.Registration {
+        if name == config.Registration[reg].Name {
+            if len(config.Registration[reg].lastValue) > 0 {
+                ret = "Current state: \""
+                ret += config.Registration[reg].lastValue
+                ret += "\"\n"
+            }
+            break
+        }
+    }
+
+    ret += "Select option below..."
+    return ret
+}
+
+func onMessageReceived(client mqtt.Client, message mqtt.Message) {
+    log.Printf("MQTT Rx: %s @ %s", message.Payload(), message.Topic())
+
+    for reg := range config.Registration {
+        if config.Registration[reg].Topic == message.Topic() {
+            config.Registration[reg].lastValue = string(message.Payload()[:])
+        }
+    }
+}
+
 func main() {
     err := readConfig()
     if err != nil {
@@ -305,9 +347,18 @@ func main() {
     opts.SetPassword(config.Mqtt.Pass)
 
     mqttClient = mqtt.NewClient(opts)
-    if token := mqttClient.Connect(); token.Wait() && token.Error() != nil {
+    token := mqttClient.Connect();
+    if token.Wait() && token.Error() != nil {
         log.Printf("MQTT error: %v", token.Error())
         os.Exit(1)
+    }
+
+    // Subscribe to registered topics
+    for reg := range config.Registration {
+        token := mqttClient.Subscribe(config.Registration[reg].Topic, 0, onMessageReceived)
+        if token.Wait() && token.Error() != nil {
+            log.Printf("MQTT sub error: %v", token.Error())
+        }
     }
 
     // Initialize Telegram
@@ -381,6 +432,10 @@ func main() {
                                 reply = fmt.Sprintf("Error authorizing ID! %v", err)
                             } else {
                                 reply = fmt.Sprintf("Ok, authorized %d.", id)
+
+                                // also notify user
+                                text := "You have now been authorized by the admin. Try /help for commands."
+                                sendMessage(text, id)
                             }
                         }
                     } else {
@@ -460,14 +515,19 @@ func main() {
                         }
                     } else if isRegisteredCommand(update.Message.Text[1:]) {
                         reply = ""
-                        sendKeyboardReply(update.Message.Text[1:], update.Message.Chat.ID, update.Message.MessageID)
+                        text := lastValueForCommand(update.Message.Text[1:])
+                        sendKeyboardReply(text, update.Message.Text[1:], update.Message.Chat.ID, update.Message.MessageID)
                     }
             }
         } else {
-            log.Printf("Message from unauthorized user. %s %d", update.Message.From.UserName, update.Message.From.ID)
-            notifyAdminAuthorization(update.Message.From.ID, update.Message.From.UserName)
+            // only request admin-auth when /start has been sent!
+            // this avoids most bot spam.
+            if update.Message.Text == "/start" {
+                log.Printf("Message from unauthorized user. %s %d", update.Message.From.UserName, update.Message.From.ID)
+                notifyAdminAuthorization(update.Message.From.ID, update.Message.From.UserName)
 
-            reply = "Sorry, you are not authorized. Administrator confirmation required."
+                reply = "Sorry, you are not authorized. Administrator confirmation required."
+            }
         }
 
         // send a reply

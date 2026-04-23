@@ -38,3 +38,32 @@ registration:
       values:
         - "on"
         - "off"
+    - name: solderlights
+      topic: livingroom/workbench/cmnd/POWER
+      values:
+        - "on"
+        - "off"
+    - name: audioout
+      topic: livingroom/amp/cmnd/POWER
+      values:
+        - "on"
+        - "off"
+    - name: cornerlight
+      topic: livingroom/light_corner/cmnd/POWER
+      values:
+        - "on"
+        - "off"
+    - name: sink
+      topic: livingroom/light_sink/cmnd/POWER
+      values:
+        - "on"
+        - "off"
+    - name: fan
+      topic: bathroom/force_fan
+      values:
+        - "360"
+        - "120"
+        - "60"
+        - "30"
+        - "10"
+        - "0"

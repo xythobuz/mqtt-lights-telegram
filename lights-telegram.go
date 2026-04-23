@@ -233,7 +233,6 @@ func register(name string, topic string, values string) error {
     config.Registration = append(config.Registration, r)
     writeConfig()
 
-
     token := mqttClient.Subscribe(topic, 0, onMessageReceived)
     if token.Wait() && token.Error() != nil {
         log.Printf("MQTT sub error: %v", token.Error())
@@ -322,6 +321,20 @@ func onMessageReceived(client mqtt.Client, message mqtt.Message) {
             config.Registration[reg].lastValue = string(message.Payload()[:])
         }
     }
+
+    if message.Topic() == "esp_env/notify" {
+        text := string(message.Payload()[:])
+
+        // forward notifications to admin
+        if (config.Admin != 0) {
+            sendMessage(text, config.Admin)
+        }
+
+        // forward notifications to all registered users
+        for user := range config.Users {
+            sendMessage(text, config.Users[user])
+        }
+    }
 }
 
 func main() {
@@ -355,10 +368,16 @@ func main() {
 
     // Subscribe to registered topics
     for reg := range config.Registration {
-        token := mqttClient.Subscribe(config.Registration[reg].Topic, 0, onMessageReceived)
+        token = mqttClient.Subscribe(config.Registration[reg].Topic, 0, onMessageReceived)
         if token.Wait() && token.Error() != nil {
             log.Printf("MQTT sub error: %v", token.Error())
         }
+    }
+
+    // Subscribe to notification topic
+    token = mqttClient.Subscribe("esp_env/notify", 0, onMessageReceived)
+    if token.Wait() && token.Error() != nil {
+	    log.Printf("MQTT sub error: %v", token.Error())
     }
 
     // Initialize Telegram
